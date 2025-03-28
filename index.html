@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatX 💬</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <style>
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-pink: #ff00ff;
+            --dark-bg: #0f0c29;
+        }
+
+        body {
+            margin: 0;
+            background: var(--dark-bg);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', monospace;
+            color: white;
+        }
+
+        .start-screen {
+            text-align: center;
+            padding: 30px;
+            border: 3px solid var(--neon-blue);
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            box-shadow: 0 0 40px var(--neon-blue);
+        }
+
+        .chat-container {
+            display: none;
+            width: 95%;
+            max-width: 800px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid var(--neon-pink);
+            border-radius: 20px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        #status {
+            text-align: center;
+            color: var(--neon-blue);
+            font-size: 1.3em;
+            margin: 15px 0;
+            text-shadow: 0 0 10px var(--neon-blue);
+        }
+
+        #messages {
+            height: 500px;
+            overflow-y: auto;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+
+        .message {
+            margin: 15px 0;
+            padding: 15px;
+            border-radius: 15px;
+            max-width: 70%;
+            position: relative;
+            animation: popIn 0.3s ease-out;
+        }
+
+        .received {
+            background: linear-gradient(45deg, #6a11cb, #2575fc);
+            float: left;
+            clear: both;
+        }
+
+        .sent {
+            background: linear-gradient(45deg, #ff00ff, #ff6b6b);
+            float: right;
+            clear: both;
+        }
+
+        button {
+            background: #000;
+            color: var(--neon-blue);
+            border: 2px solid var(--neon-blue);
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 1.1em;
+        }
+
+        button:hover {
+            box-shadow: 0 0 25px var(--neon-blue);
+            transform: scale(1.05);
+        }
+
+        input {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid var(--neon-pink);
+            border-radius: 15px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            font-size: 1.1em;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.9); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--neon-pink);
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Start Screen -->
+    <div class="start-screen">
+        <h1 style="color: var(--neon-pink); text-shadow: 0 0 15px var(--neon-pink);">CHATX</h1>
+        <button id="start-btn" onclick="startPairing()">CONNECT PARTNER</button>
+        <p id="status">Status: Ready to connect</p>
+    </div>
+
+    <!-- Chat Interface -->
+    <div class="chat-container">
+        <div id="status">🔗 Connection Established!</div>
+        <div id="messages"></div>
+        <div style="display: flex; gap: 10px;">
+            <input type="text" id="message-input" placeholder="Your message..." 
+                   onkeypress="if(event.key === 'Enter') sendMessage()">
+            <button onclick="sendMessage()">SEND</button>
+        </div>
+    </div>
+
+<script>
+// 🔥 Firebase Configuration (Screenshot ke data se)
+const firebaseConfig = {
+    apiKey: "AIzaSyYOUR_API_KEY_HERE",  // ← Firebase Project Settings se lein
+    authDomain: "random-chat-11627.firebaseapp.com",
+    databaseURL: "https://random-chat-11627-default-rtdb.asia-southeast1.firebasedatabase.app", // Screenshot URL (corrected)
+    projectId: "random-chat-11627", // Aapka project ID
+    storageBucket: "random-chat-11627.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID", // ← Project Settings se
+    appId: "YOUR_APP_ID" // ← Project Settings se
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+// User Configuration
+const userId = Math.random().toString(36).substr(2, 9); // Random ID
+let currentRoom = null;
+const userColor = `hsl(${Math.random() * 360}, 70%, 60%)`; // Random color
+
+// Partner Matching System
+function startPairing() {
+    const startBtn = document.getElementById('start-btn');
+    startBtn.disabled = true;
+    document.getElementById('status').textContent = "Searching for partner... 🔍";
+    
+    const waitingRef = database.ref('waiting');
+    
+    // Atomic matching transaction
+    waitingRef.transaction(currentQueue => {
+        if(currentQueue && currentQueue.length > 0) {
+            // Partner found
+            currentRoom = `room_${Date.now()}`;
+            const partnerId = currentQueue[0];
+            
+            // Update both users
+            database.ref(`users/${partnerId}`).update({ room: currentRoom });
+            database.ref(`users/${userId}`).update({ room: currentRoom });
+            
+            return currentQueue.slice(1);
+        } else {
+            // Join waiting list
+            return [userId, ...(currentQueue || [])];
+        }
+    });
+}
+
+// Room Assignment Listener
+database.ref(`users/${userId}`).on('value', snapshot => {
+    const userData = snapshot.val();
+    if(userData?.room) {
+        currentRoom = userData.room;
+        showChatInterface();
+        setupChatListener();
+    }
+});
+
+function showChatInterface() {
+    document.querySelector('.start-screen').style.display = 'none';
+    document.querySelector('.chat-container').style.display = 'block';
+    document.getElementById('status').innerHTML = 
+        `✅ Connected to partner! Start chatting!`;
+}
+
+function setupChatListener() {
+    database.ref(`messages/${currentRoom}`).on('child_added', snapshot => {
+        const { text, sender, timestamp } = snapshot.val();
+        const messagesDiv = document.getElementById('messages');
+        
+        const messageEl = document.createElement('div');
+        messageEl.className = `message ${sender === userId ? 'sent' : 'received'}`;
+        messageEl.innerHTML = `
+            <div class="message-content">${text}</div>
+            <div class="timestamp">${new Date(timestamp).toLocaleTimeString()}</div>
+        `;
+        
+        messagesDiv.appendChild(messageEl);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
+}
+
+// Message Sending
+function sendMessage() {
+    const input = document.getElementById('message-input');
+    const message = input.value.trim();
+    
+    if(message && currentRoom) {
+        database.ref(`messages/${currentRoom}`).push().set({
+            text: message,
+            sender: userId,
+            timestamp: Date.now()
+        });
+        input.value = '';
+    }
+}
+
+// Cleanup on Exit
+window.addEventListener('beforeunload', () => {
+    database.ref(`users/${userId}`).remove();
+    if(currentRoom) {
+        database.ref(`messages/${currentRoom}`).remove();
+        database.ref(`waiting`).transaction(queue => {
+            return queue?.filter(id => id !== userId) || [];
+        });
+    }
+});
+</script>
+</body>
+  </html>
